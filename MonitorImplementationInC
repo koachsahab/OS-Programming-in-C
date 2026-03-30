@@ -1,0 +1,107 @@
+/* * Monitor Implementation in C (Producer-Consumer Problem)
+ * Simulation of Monitor behavior using Pthreads
+ * Credit: Mr. Dinesh Kumar, Educationist
+ * Rawal Institute of Engineering & Technology
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <unistd.h>
+
+#define BUFFER_SIZE 5
+
+// --- THE MONITOR STRUCTURE ---
+typedef struct {
+    int buffer[BUFFER_SIZE];
+    int count;          // Items currently in buffer
+    int in;             // Index for producer
+    int out;            // Index for consumer
+    pthread_mutex_t lock;      // The "Door" to the Monitor
+    pthread_cond_t not_full;   // Condition Variable 1
+    pthread_cond_t not_empty;  // Condition Variable 2
+} Monitor;
+
+Monitor mon;
+
+// Monitor Procedure: Produce
+void produce(Monitor *m, int item) {
+    pthread_mutex_lock(&m->lock); // Entering the Monitor
+
+    while (m->count == BUFFER_SIZE) {
+        printf("Buffer Full! Producer is waiting...\n");
+        pthread_cond_wait(&m->not_full, &m->lock); // Release lock and wait
+    }
+
+    m->buffer[m->in] = item;
+    m->in = (m->in + 1) % BUFFER_SIZE;
+    m->count++;
+
+    printf("Produced: %d | Items in Buffer: %d\n", item, m->count);
+
+    pthread_cond_signal(&m->not_empty); // Signal that buffer is not empty
+    pthread_mutex_unlock(&m->lock);    // Leaving the Monitor
+}
+
+// Monitor Procedure: Consume
+int consume(Monitor *m) {
+    pthread_mutex_lock(&m->lock); // Entering the Monitor
+
+    while (m->count == 0) {
+        printf("Buffer Empty! Consumer is waiting...\n");
+        pthread_cond_wait(&m->not_empty, &m->lock); // Release lock and wait
+    }
+
+    int item = m->buffer[m->out];
+    m->out = (m->out + 1) % BUFFER_SIZE;
+    m->count--;
+
+    printf("Consumed: %d | Items in Buffer: %d\n", item, m->count);
+
+    pthread_cond_signal(&m->not_full); // Signal that buffer is not full
+    pthread_mutex_unlock(&m->lock);   // Leaving the Monitor
+    
+    return item;
+}
+
+// --- THREAD FUNCTIONS ---
+
+void* producer_thread(void* arg) {
+    for (int i = 0; i < 10; i++) {
+        produce(&mon, i + 100);
+        sleep(1); 
+    }
+    return NULL;
+}
+
+void* consumer_thread(void* arg) {
+    for (int i = 0; i < 10; i++) {
+        consume(&mon);
+        sleep(2); // Consumer is slower than producer
+    }
+    return NULL;
+}
+
+int main() {
+    // Initialize Monitor
+    mon.count = 0;
+    mon.in = 0;
+    mon.out = 0;
+    pthread_mutex_init(&mon.lock, NULL);
+    pthread_cond_init(&mon.not_full, NULL);
+    pthread_cond_init(&mon.not_empty, NULL);
+
+    pthread_t prod, cons;
+    pthread_create(&prod, NULL, producer_thread, NULL);
+    pthread_create(&cons, NULL, consumer_thread, NULL);
+
+    pthread_join(prod, NULL);
+    pthread_join(cons, NULL);
+
+    // Cleanup
+    pthread_mutex_destroy(&mon.lock);
+    pthread_cond_destroy(&mon.not_full);
+    pthread_cond_destroy(&mon.not_empty);
+
+    return 0;
+}
